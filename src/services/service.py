@@ -224,39 +224,35 @@ async def vectorize_dataset_upload_service(file, drop_existing):
 api_router.vectorize_dataset_upload_service = vectorize_dataset_upload_service
 
 
-@app.post("/validate-qa-pairs", response_model=ValidationResponse)
-async def validate_qa_pairs(file: UploadFile = File(...)):
-    """校验CSV文件中的question和answer字段，删除不合格样本"""
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="仅支持CSV文件")
-    
+async def validate_qa_pairs_service(file):
+    """校验CSV文件中的question和answer字段的业务逻辑"""
     content = await file.read()
     df = pd.read_csv(io.BytesIO(content), encoding='utf-8-sig')
-    
+
     required_columns = ['question', 'answer']
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         raise HTTPException(status_code=400, detail=f"CSV文件缺少必要字段: {missing_columns}")
-    
+
     id_column = 'ID' if 'ID' in df.columns else None
     results = []
     valid_indices = []
     valid_count = 0
     invalid_count = 0
-    
+
     for idx, row in df.iterrows():
         question = str(row.get('question', '')).strip()
         answer = str(row.get('answer', '')).strip()
         row_id = row[id_column] if id_column else idx + 1
-        
+
         is_valid, reason = qa_validator.validate_qa_pair(question, answer)
-        
+
         if is_valid:
             valid_count += 1
             valid_indices.append(idx)
         else:
             invalid_count += 1
-        
+
         results.append(ValidationItem(
             row_id=row_id,
             question=question,
@@ -264,10 +260,10 @@ async def validate_qa_pairs(file: UploadFile = File(...)):
             is_valid=is_valid,
             reason=reason
         ))
-    
+
     total_count = len(results)
     pass_rate = (valid_count / total_count * 100) if total_count > 0 else 0
-    
+
     output_path = None
     if valid_count > 0:
         valid_df = df.loc[valid_indices].copy()
@@ -276,7 +272,7 @@ async def validate_qa_pairs(file: UploadFile = File(...)):
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, f"validated_qa_pairs_{timestamp}.csv")
         valid_df.to_csv(output_path, index=False, encoding='utf-8-sig')
-    
+
     return ValidationResponse(
         success=True,
         message=f"校验完成，共 {total_count} 条记录，删除 {invalid_count} 条不合格记录",
@@ -287,6 +283,9 @@ async def validate_qa_pairs(file: UploadFile = File(...)):
         output_path=output_path,
         results=results
     )
+
+# 设置路由器服务
+api_router.validate_qa_pairs_service = validate_qa_pairs_service
 
 
 @app.post("/process-document-with-polish", response_model=ProcessDocumentWithPolishResponse)
