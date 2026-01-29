@@ -158,20 +158,6 @@ app.include_router(api_router)
 async def health():
     return {"status": "healthy", "service": "multilingual-vector-search"}
 
-
-
-
-
-@app.post("/test/run-qa-test", response_model=TestResponse)
-async def run_qa_test(request: TestRequest):
-    """运行QA测试（服务器）"""
-    try:
-        return await test_service.run_test(request)
-    except Exception as e:
-        logger.error(f"QA测试错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/test/run-qa-test-upload", response_model=TestResponse)
 async def run_qa_test_with_upload(
     file: UploadFile = File(...),
@@ -194,56 +180,48 @@ async def run_qa_test_with_upload(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/vectorize-dataset-upload", response_model=VectorizeDatasetResponse)
-async def vectorize_dataset_upload(
-    file: UploadFile = File(...),
-    drop_existing: Optional[bool] = None
-):
-    """通过上传文件进行向量化存储"""
-    temp_file_path = None
-    try:
-        if not file.filename.endswith('.csv'):
-            raise HTTPException(status_code=400, detail="仅支持CSV文件")
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        temp_dir = config.get('document_processing', {}).get('temp_dir', 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_file_path = os.path.join(temp_dir, f"uploaded_dataset_{timestamp}.csv")
-        
-        content = await file.read()
-        with open(temp_file_path, 'wb') as f:
-            f.write(content)
-        
-        if drop_existing is None:
-            drop_existing = config.get('vectorization', {}).get('drop_existing', False)
-        
-        result = pipeline.vectorize_dataset(temp_file_path, drop_existing)
-        
-        report_path = None
-        if result.get('report'):
-            report_dir = config.get('vectorization', {}).get('report_output_dir', 'outputs/vectorization_reports')
-            timestamp_str = result['report'].get('timestamp', timestamp)
-            report_path = os.path.join(report_dir, f"performance_report_{timestamp_str}.json")
-        
-        return VectorizeDatasetResponse(
-            success=True,
-            message=f"成功向量化 {result['total_records']} 条记录",
-            total_records=result['total_records'],
-            duration_seconds=round(result['duration_seconds'], 2),
-            report_path=report_path
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"向量化数据集错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"向量化失败: {str(e)}")
-    finally:
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.remove(temp_file_path)
-            except:
-                pass
+async def vectorize_dataset_upload_service(file, drop_existing):
+    """上传csv文件进行向量化的业务逻辑"""
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="仅支持CSV文件")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    temp_dir = config.get('document_processing', {}).get('temp_dir', 'temp')
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_file_path = os.path.join(temp_dir, f"uploaded_dataset_{timestamp}.csv")
+
+    content = await file.read()
+    with open(temp_file_path, 'wb') as f:
+        f.write(content)
+
+    if drop_existing is None:
+        drop_existing = config.get('vectorization', {}).get('drop_existing', False)
+
+    result = pipeline.vectorize_dataset(temp_file_path, drop_existing)
+
+    report_path = None
+    if result.get('report'):
+        report_dir = config.get('vectorization', {}).get('report_output_dir', 'outputs/vectorization_reports')
+        timestamp_str = result['report'].get('timestamp', timestamp)
+        report_path = os.path.join(report_dir, f"performance_report_{timestamp_str}.json")
+
+    # 清理临时文件
+    if temp_file_path and os.path.exists(temp_file_path):
+        try:
+            os.remove(temp_file_path)
+        except:
+            pass
+
+    return VectorizeDatasetResponse(
+        success=True,
+        message=f"成功向量化 {result['total_records']} 条记录",
+        total_records=result['total_records'],
+        duration_seconds=round(result['duration_seconds'], 2),
+        report_path=report_path
+    )
+
+# 设置路由器服务
+api_router.vectorize_dataset_upload_service = vectorize_dataset_upload_service
 
 
 @app.post("/validate-qa-pairs", response_model=ValidationResponse)

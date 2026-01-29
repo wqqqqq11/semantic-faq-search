@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File
-from typing import List
-from ..models.models import QueryRequest, QueryResponse, ProcessFilesResponse
+from typing import List, Optional
+from ..models.models import QueryRequest, QueryResponse, ProcessFilesResponse, VectorizeDatasetResponse
 
 # 创建路由器实例
 router = APIRouter()
@@ -8,6 +8,7 @@ router = APIRouter()
 # 依赖项将在主应用中注入
 router.query_service = None
 router.process_uploaded_files_service = None
+router.vectorize_dataset_upload_service = None
 
 @router.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
@@ -27,3 +28,14 @@ async def process_uploaded_files(
         处理上传的非结构化文档并生成并校验QA对数据集
     """
     return await router.process_uploaded_files_service(files, service_name, user_name)
+
+
+@router.post("/vectorize-dataset-upload", response_model=VectorizeDatasetResponse)
+async def vectorize_dataset_upload(
+    file: UploadFile = File(...),
+    drop_existing: Optional[bool] = None
+):
+    """
+        上传csv文件进行向量化存储
+    """
+    return await router.vectorize_dataset_upload_service(file, drop_existing)
