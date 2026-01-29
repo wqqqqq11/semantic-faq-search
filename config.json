@@ -1,0 +1,84 @@
+{
+  "data": {
+    "input_csv": "test_data/AI销售_测试1_20260126_181612.csv",
+    "text_columns": ["question", "answer"],
+    "id_column": "ID"
+  },
+  "qwen": {
+    "api_key": "sk-b20b054496654e40aac5bd8b6f140071",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "model": "qwen3-max",
+    "max_retries": 3,
+    "timeout": 30
+  },
+  "document_processing": {
+    "chunk_size": 500,
+    "chunk_overlap": 50,
+    "max_qa_pairs_per_chunk": 5,
+    "max_content_length": 4000,
+    "output_csv": "data/processed_qa_pairs.csv",
+    "temp_dir": "temp",
+    "supported_extensions": [".txt", ".pdf", ".docx", ".doc", ".md", ".html", ".csv", ".epub", ".ppt", ".pptx", ".odt", ".eml", ".enex"],
+    "enable_qa_validation": true,
+    "validation_batch_size": 10,
+    "header_lines": 3,
+    "footer_lines": 3,
+    "max_workers_chunk": 20,
+    "max_workers_file": 3
+  },
+  "trace": {
+    "enable_tracing": true,
+    "trace_dir": "data/trace_data",
+    "sample_size": 30,
+    "stages": {
+      "raw_documents": true,
+      "cleaned_documents": true,
+      "merged_documents": true,
+      "text_chunks": true,
+      "generated_qa": true,
+      "validated_qa": true
+    }
+  },
+  "clip": {
+    "model_name": "BAAI/bge-large-zh-v1.5",
+    "batch_size": 128,
+    "device": "cuda",
+    "local_files_only": true
+  },
+  "milvus": {
+    "host": "milvus-standalone",
+    "port": 19530,
+    "collection_name": "multilingual_vectors",
+    "dimension": 1024,
+    "index_type": "IVF_FLAT",
+    "metric_type": "COSINE",
+    "nlist": 1024,
+    "nprobe": 64,
+    "milvus_config_path": "tool_configs/milvus_config.json"
+  },
+  "service": {
+    "host": "0.0.0.0",
+    "port": 8888,
+    "top_k": 10
+  },
+  "performance": {
+    "enable_metrics": true,
+    "gpu_sample_interval": 1.0,
+    "report_format": ["json", "html"]
+  },
+  "vectorization": {
+    "drop_existing": true,
+    "batch_size": 1000,
+    "report_output_dir": "outputs/vectorization_reports"
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "polish": {
+    "base_url": "http://192.168.151.84:8010",
+    "timeout": 60,
+    "temp_dir": "temp/polish",
+    "batch_size": 50
+  }
+}
