@@ -2,7 +2,8 @@ import numpy as np
 import torch
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
-from typing import Dict, List, Any
+from pydantic import BaseModel
+from typing import Dict, List, Any, Optional
 from ..utils.common import retry
 
 
@@ -68,5 +69,43 @@ class QwenLabeler:
             temperature=0.7,
             max_tokens=50
         )
-        
+
         return response.choices[0].message.content.strip()
+
+
+# API 模型定义
+class QueryRequest(BaseModel):
+    query: str
+    top_k: int = 10
+
+
+class QueryResultItem(BaseModel):
+    similarity_score: float
+    generate_source: Optional[str] = ""
+    question: str
+    answer: str
+    image_url: str
+
+
+class CategoryItem(BaseModel):
+    category_name: str
+    items: List[QueryResultItem]
+
+
+class QueryResponse(BaseModel):
+    search_info: Dict[str, Any]
+    categories: List[CategoryItem]
+
+
+class ProcessFilesRequest(BaseModel):
+    file_paths: List[str]
+    service_name: Optional[str] = ""
+    user_name: Optional[str] = ""
+    output_path: Optional[str] = None
+
+
+class ProcessFilesResponse(BaseModel):
+    success: bool
+    message: str
+    qa_count: int
+    output_path: str

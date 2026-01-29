@@ -7,13 +7,14 @@ import pandas as pd
 import io
 from datetime import datetime
 from ..utils.common import load_config, setup_logger
-from ..models.models import CLIPEmbedder
+from ..models.models import CLIPEmbedder, QueryRequest, QueryResultItem, CategoryItem, QueryResponse
 from ..repositories.milvus_store import MilvusStore
 from ..core.document_processor import DocumentProcessor
 from ..core.pipeline import Pipeline
 from ..core.qa_validator import QAValidator
 from .test_services.qas_test_service import QASTestService, TestRequest, TestResponse
 from .polish_service import PolishService
+from ..routers.api_router import router as api_router
 from pymilvus import utility
 
 app = FastAPI(title="多语种向量检索服务")
@@ -28,26 +29,80 @@ test_service = QASTestService()
 qa_validator = QAValidator(config)
 polish_service = PolishService(config)
 
+# 设置路由器依赖项
+api_router.embedder = embedder
+api_router.store = store
+api_router.logger = logger
 
-class QueryRequest(BaseModel):
-    query: str
-    top_k: int = 10
+
+async def query_service(request):
+    """查询服务业务逻辑"""
+    query_vector = embedder.encode([request.query])[0]
+
+    results = store.search(
+        query_vector=query_vector,
+        top_k=min(request.top_k, 100)
+    )
+
+    # 按类别分组结果
+    category_dict = {}
+    for result in results:
+        category = result.get('category', '未分类')
+        if not category or category.strip() == '':
+            category = '未分类'
+
+        # 将相似度分数转换为百分比格式
+        similarity_score = round(result['score'] * 100, 2)
+
+        query_item = QueryResultItem(
+            similarity_score=similarity_score,
+            generate_source=result.get('generate_source', ''),
+            question=result.get('question', ''),
+            answer=result.get('answer', ''),
+            image_url=result.get('image_url', '')
+        )
+
+        if category not in category_dict:
+            category_dict[category] = []
+        category_dict[category].append(query_item)
+
+    # 转换为数组格式
+    categories = []
+    for category_name, items in category_dict.items():
+        categories.append(CategoryItem(
+            category_name=category_name,
+            items=items
+        ))
+
+    # 构建搜索信息
+    search_info = {
+        "query": request.query,
+        "timestamp": datetime.now().isoformat(),
+        "total_results": len(results)
+    }
+
+    return QueryResponse(
+        search_info=search_info,
+        categories=categories
+    )
 
 
-class QueryResultItem(BaseModel):
-    similarity_score: float
-    generate_source: Optional[str] = ""
-    question: str
-    answer: str
-    image_url: str
+# 设置路由器服务
+api_router.query_service = query_service
 
-class CategoryItem(BaseModel):
-    category_name: str
-    items: List[QueryResultItem]
 
-class QueryResponse(BaseModel):
-    search_info: Dict[str, Any]
-    categories: List[CategoryItem]
+class ProcessFilesRequest(BaseModel):
+    file_paths: List[str]
+    service_name: Optional[str] = ""
+    user_name: Optional[str] = ""
+    output_path: Optional[str] = None
+
+
+class ProcessFilesResponse(BaseModel):
+    success: bool
+    message: str
+    qa_count: int
+    output_path: str
 
 
 class ProcessFilesRequest(BaseModel):
@@ -117,67 +172,15 @@ async def shutdown():
     logger.info("关闭服务")
     store.disconnect()
 
+# 注册路由器
+app.include_router(api_router)
+
 
 @app.get("/health")
 async def health():
     return {"status": "healthy", "service": "multilingual-vector-search"}
 
 
-@app.post("/query", response_model=QueryResponse)
-async def query(request: QueryRequest):
-    try:
-        query_vector = embedder.encode([request.query])[0]
-        
-        results = store.search(
-            query_vector=query_vector,
-            top_k=min(request.top_k, 100)
-        )
-        
-        # 按类别分组结果
-        category_dict = {}
-        for result in results:
-            category = result.get('category', '未分类')
-            if not category or category.strip() == '':
-                category = '未分类'
-            
-            # 将相似度分数转换为百分比格式
-            similarity_score = round(result['score'] * 100, 2)
-            
-            query_item = QueryResultItem(
-                similarity_score=similarity_score,
-                generate_source=result.get('generate_source', ''),
-                question=result.get('question', ''),
-                answer=result.get('answer', ''),
-                image_url=result.get('image_url', '')
-            )
-            
-            if category not in category_dict:
-                category_dict[category] = []
-            category_dict[category].append(query_item)
-        
-        # 转换为数组格式
-        categories = []
-        for category_name, items in category_dict.items():
-            categories.append(CategoryItem(
-                category_name=category_name,
-                items=items
-            ))
-        
-        # 构建搜索信息
-        search_info = {
-            "query": request.query,
-            "timestamp": datetime.now().isoformat(),
-            "total_results": len(results)
-        }
-        
-        return QueryResponse(
-            search_info=search_info,
-            categories=categories
-        )
-    
-    except Exception as e:
-        logger.error(f"查询错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/process-files", response_model=ProcessFilesResponse)
