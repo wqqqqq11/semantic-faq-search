@@ -7,7 +7,11 @@ import pandas as pd
 import io
 from datetime import datetime
 from ..utils.common import load_config, setup_logger
-from ..models.models import CLIPEmbedder, QueryRequest, QueryResultItem, CategoryItem, QueryResponse
+from ..models.models import (
+    CLIPEmbedder, QueryRequest, QueryResultItem, CategoryItem, QueryResponse,
+    ProcessFilesResponse, VectorizeDatasetResponse, ValidationItem, ValidationResponse,
+    ProcessDocumentWithPolishResponse
+)
 from ..repositories.milvus_store import MilvusStore
 from ..core.document_processor import DocumentProcessor
 from ..core.pipeline import Pipeline
@@ -90,71 +94,45 @@ async def query_service(request):
 # 设置路由器服务
 api_router.query_service = query_service
 
+async def process_uploaded_files_service(files, service_name, user_name):
+    """处理非结构化文档并生成并校验QA对数据集的业务逻辑"""
+    # 准备文件数据
+    uploaded_files = []
+    for file in files:
+        content = await file.read()
+        uploaded_files.append({
+            "name": file.filename,
+            "content": content
+        })
 
-class ProcessFilesRequest(BaseModel):
-    file_paths: List[str]
-    service_name: Optional[str] = ""
-    user_name: Optional[str] = ""
-    output_path: Optional[str] = None
+    # 处理文件
+    qa_data = document_processor.process_uploaded_files(
+        uploaded_files=uploaded_files,
+        service_name=service_name,
+        user_name=user_name
+    )
 
+    if not qa_data:
+        return ProcessFilesResponse(
+            success=False,
+            message="未能生成任何QA对",
+            qa_count=0,
+            output_path=""
+        )
 
-class ProcessFilesResponse(BaseModel):
-    success: bool
-    message: str
-    qa_count: int
-    output_path: str
+    # 保存到CSV
+    output_path = document_processor.save_to_csv(qa_data)
 
+    return ProcessFilesResponse(
+        success=True,
+        message=f"成功处理 {len(files)} 个上传文件",
+        qa_count=len(qa_data),
+        output_path=output_path
+    )
 
-class ProcessFilesRequest(BaseModel):
-    file_paths: List[str]
-    service_name: Optional[str] = ""
-    user_name: Optional[str] = ""
-    output_path: Optional[str] = None
+# 设置路由器服务
+api_router.process_uploaded_files_service = process_uploaded_files_service
 
-
-class ProcessFilesResponse(BaseModel):
-    success: bool
-    message: str
-    qa_count: int
-    output_path: str
-
-
-class VectorizeDatasetResponse(BaseModel):
-    success: bool
-    message: str
-    total_records: int
-    duration_seconds: float
-    report_path: Optional[str] = None
-
-
-class ValidationItem(BaseModel):
-    row_id: Any
-    question: str
-    answer: str
-    is_valid: bool
-    reason: str
-
-
-class ValidationResponse(BaseModel):
-    success: bool
-    message: str
-    total_count: int
-    valid_count: int
-    invalid_count: int
-    pass_rate: float
-    output_path: Optional[str] = None
-    results: List[ValidationItem]
-
-
-class ProcessDocumentWithPolishResponse(BaseModel):
-    success: bool
-    message: str
-    original_qa_count: int
-    polished_qa_count: int
-    vectorized_count: int
-    validated_csv_path: str
-    polished_csv_path: str
-    vectorization_report: Optional[Dict[str, Any]] = None
 
 
 @app.on_event("startup")
@@ -182,94 +160,6 @@ async def health():
 
 
 
-
-@app.post("/process-files", response_model=ProcessFilesResponse)
-async def process_files(request: ProcessFilesRequest):
-    """处理文件并生成QA对数据集（服务器）"""
-    try:
-        # 验证文件是否存在
-        missing_files = [path for path in request.file_paths if not os.path.exists(path)]
-        if missing_files:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"以下文件不存在: {missing_files}"
-            )
-        
-        # 处理文件
-        qa_data = document_processor.process_files(
-            file_paths=request.file_paths,
-            service_name=request.service_name,
-            user_name=request.user_name
-        )
-        
-        if not qa_data:
-            return ProcessFilesResponse(
-                success=False,
-                message="未能生成任何QA对",
-                qa_count=0,
-                output_path=""
-            )
-        
-        # 保存到CSV
-        output_path = document_processor.save_to_csv(qa_data, request.output_path)
-        
-        return ProcessFilesResponse(
-            success=True,
-            message=f"成功处理 {len(request.file_paths)} 个文件",
-            qa_count=len(qa_data),
-            output_path=output_path
-        )
-        
-    except Exception as e:
-        logger.error(f"处理文件错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/process-uploaded-files", response_model=ProcessFilesResponse)
-async def process_uploaded_files(
-    files: List[UploadFile] = File(...),
-    service_name: str = "",
-    user_name: str = ""
-):
-    """处理上传的文件并生成QA对数据集（本地）"""
-    try:
-        # 准备文件数据
-        uploaded_files = []
-        for file in files:
-            content = await file.read()
-            uploaded_files.append({
-                "name": file.filename,
-                "content": content
-            })
-        
-        # 处理文件
-        qa_data = document_processor.process_uploaded_files(
-            uploaded_files=uploaded_files,
-            service_name=service_name,
-            user_name=user_name
-        )
-        
-        if not qa_data:
-            return ProcessFilesResponse(
-                success=False,
-                message="未能生成任何QA对",
-                qa_count=0,
-                output_path=""
-            )
-        
-        # 保存到CSV
-        output_path = document_processor.save_to_csv(qa_data)
-        
-        return ProcessFilesResponse(
-            success=True,
-            message=f"成功处理 {len(files)} 个上传文件",
-            qa_count=len(qa_data),
-            output_path=output_path
-        )
-        
-    except Exception as e:
-        logger.error(f"处理上传文件错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/test/run-qa-test", response_model=TestResponse)

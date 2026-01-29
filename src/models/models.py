@@ -109,3 +109,46 @@ class ProcessFilesResponse(BaseModel):
     message: str
     qa_count: int
     output_path: str
+
+
+class ProcessUploadedFilesRequest(BaseModel):
+    service_name: str = ""
+    user_name: str = ""
+
+
+class VectorizeDatasetResponse(BaseModel):
+    success: bool
+    message: str
+    total_records: int
+    duration_seconds: float
+    report_path: Optional[str] = None
+
+
+class ValidationItem(BaseModel):
+    row_id: Any
+    question: str
+    answer: str
+    is_valid: bool
+    reason: str
+
+
+class ValidationResponse(BaseModel):
+    success: bool
+    message: str
+    total_count: int
+    valid_count: int
+    invalid_count: int
+    pass_rate: float
+    output_path: Optional[str] = None
+    results: List[ValidationItem]
+
+
+class ProcessDocumentWithPolishResponse(BaseModel):
+    success: bool
+    message: str
+    original_qa_count: int
+    polished_qa_count: int
+    vectorized_count: int
+    validated_csv_path: str
+    polished_csv_path: str
+    vectorization_report: Optional[Dict[str, Any]] = None
