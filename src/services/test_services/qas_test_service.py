@@ -4,13 +4,13 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
-from fastapi import HTTPException, UploadFile, File
-from pydantic import BaseModel
+from fastapi import HTTPException, UploadFile
 from typing import List, Dict, Any, Optional
 
 from src.utils.common import load_config, setup_logger
 from src.models.models import CLIPEmbedder, TestRequest, TestMetrics, TestResponse
 from src.repositories.milvus_store import MilvusStore
+from src.utils.metrics import MetricsCollector
 
 
 class QASTestService:
@@ -20,51 +20,53 @@ class QASTestService:
         self.logger = setup_logger("QASTestService", self.config)
         self.embedder = CLIPEmbedder(self.config)
         self.store = MilvusStore(self.config)
+        self.metrics_collector = MetricsCollector(self.config)
         
     def _load_test_config(self) -> Dict[str, Any]:
+        """
+        加载测试配置
+        """
         test_config_path = "tool_configs/test_config.json"
-        try:
-            with open(test_config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            self.logger.error(f"加载测试配置失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"测试配置加载失败: {str(e)}")
+        with open(test_config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
     
     def _load_test_data(self, csv_path: str) -> pd.DataFrame:
-        try:
-            if not os.path.exists(csv_path):
-                raise FileNotFoundError(f"测试文件不存在: {csv_path}")
+        """
+        加载测试数据
+        """
+        
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(f"测试文件不存在: {csv_path}")
             
-            df = pd.read_csv(csv_path, encoding='utf-8')
+        df = pd.read_csv(csv_path, encoding='utf-8')
             
-            required_columns = [
-                self.test_config['test_data']['question_column'],
-                self.test_config['test_data']['answer_column'],
-                self.test_config['test_data']['id_column']
-            ]
+        required_columns = [
+            self.test_config['test_data']['question_column'],
+            self.test_config['test_data']['answer_column'],
+            self.test_config['test_data']['id_column']
+        ]
             
-            missing_columns = [col for col in required_columns if col not in df.columns]
-            if missing_columns:
-                raise ValueError(f"测试数据缺少必要列: {missing_columns}")
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"测试数据缺少必要列: {missing_columns}")
             
-            self.logger.info(f"成功加载测试数据，共 {len(df)} 条记录")
-            return df
+        self.logger.info(f"成功加载测试数据，共 {len(df)} 条记录")
+        return df
             
-        except Exception as e:
-            self.logger.error(f"加载测试数据失败: {str(e)}")
-            raise HTTPException(status_code=400, detail=f"测试数据加载失败: {str(e)}")
     
     def _search_vector_database(self, question: str, top_k: int) -> List[Dict[str, Any]]:
-        try:
-            query_vector = self.embedder.encode([question])[0]
-            results = self.store.search(query_vector=query_vector, top_k=top_k)
-            return results
-        except Exception as e:
-            self.logger.error(f"向量数据库搜索失败: {str(e)}")
-            return []
+        """
+        向量数据库搜索
+        """
+        query_vector = self.embedder.encode([question])[0]
+        results = self.store.search(query_vector=query_vector, top_k=top_k)
+        return results
     
     def _calculate_recall_metrics(self, test_results: List[Dict[str, Any]], 
                                 recall_k_values: List[int]) -> Dict[str, float]:
+        """
+        计算召回率指标
+        """
         metrics = {}
         total_queries = len(test_results)
         
@@ -79,12 +81,18 @@ class QASTestService:
         return metrics
     
     def _exact_match(self, answer1: str, answer2: str) -> bool:
+        """
+        精确匹配
+        """
         if pd.isna(answer1) or pd.isna(answer2):
             return False
         return str(answer1).strip() == str(answer2).strip()
     
     def _process_single_query(self, row: pd.Series, top_k: int, 
                             recall_k_values: List[int]) -> Dict[str, Any]:
+        """
+        处理单个查询
+        """
         question_col = self.test_config['test_data']['question_column']
         answer_col = self.test_config['test_data']['answer_column']
         id_col = self.test_config['test_data']['id_column']
@@ -127,19 +135,16 @@ class QASTestService:
                     break
             result[f'hit_at_{k}'] = hit_found
         
-        # 诊断输出
-        if query_id <= 10 and all(not result.get(f'hit_at_{k}', False) for k in recall_k_values):
-            self.logger.warning(f"Query {query_id} 全部未命中:")
-            self.logger.warning(f"  查询: {question[:80]}")
-            self.logger.warning(f"  期望: {str(expected_answer)[:80]}")
-            for diag in result['top_results']:
-                self.logger.warning(f"  Top-{diag['rank']}: score={diag['score']}, match={diag['answer_match']}")
-        
         return result
     
-    def _generate_report(self, test_results: List[Dict[str, Any]], 
+    def _generate_report(self, test_results: List[Dict[str, Any]],
                         metrics: Dict[str, float], test_config: Dict[str, Any],
-                        start_time: datetime, end_time: datetime) -> str:
+                        start_time: datetime, end_time: datetime,
+                        initial_metrics: Dict[str, Any], initial_gpu_metrics: Dict[str, Any],
+                        final_metrics: Dict[str, Any], final_gpu_metrics: Dict[str, Any]) -> str:
+        """
+        生成测试报告
+        """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report_dir = self.test_config['test']['report_output_dir']
         os.makedirs(report_dir, exist_ok=True)
@@ -159,25 +164,41 @@ class QASTestService:
                 "top_k": test_config.get('top_k', self.test_config['vector_search']['top_k'])
             },
             "metrics": metrics,
+            "performance": {
+                "initial": {
+                    "cpu_memory": initial_metrics,
+                    "gpu": initial_gpu_metrics
+                },
+                "final": {
+                    "cpu_memory": final_metrics,
+                    "gpu": final_gpu_metrics
+                },
+                "summary": {
+                    "cpu_usage_increase": round(final_metrics.get('cpu_percent', 0) - initial_metrics.get('cpu_percent', 0), 2),
+                    "memory_usage_increase": round(final_metrics.get('memory_percent', 0) - initial_metrics.get('memory_percent', 0), 2)
+                }
+            },
             "config": test_config,
             "detailed_results": test_results
         }
         
-        try:
-            with open(report_path, 'w', encoding='utf-8') as f:
-                json.dump(report_data, f, ensure_ascii=False, indent=2)
-            
-            self.logger.info(f"测试报告已保存: {report_path}")
-            return report_path
-            
-        except Exception as e:
-            self.logger.error(f"保存测试报告失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"报告保存失败: {str(e)}")
+        with open(report_path, 'w', encoding='utf-8') as f:
+            json.dump(report_data, f, ensure_ascii=False, indent=2)
+        
+        self.logger.info(f"测试报告已保存: {report_path}")
+        return report_path
     
     async def run_test(self, request: TestRequest) -> TestResponse:
+        """
+        运行测试
+        """
         try:
             start_time = datetime.now()
-            
+
+            # 收集测试开始时的性能数据
+            initial_metrics = self.metrics_collector._get_cpu_memory_metrics()
+            initial_gpu_metrics = self.metrics_collector._get_gpu_metrics()
+
             test_csv_path = request.test_csv_path or self.test_config['test_data']['input_csv_path']
             top_k = request.top_k or self.test_config['vector_search']['top_k']
             recall_k_values = request.recall_k_values or self.test_config['test']['recall_k_values']
@@ -214,7 +235,11 @@ class QASTestService:
                         self.logger.info(f"已处理 {completed}/{len(test_df)} 个查询")
             
             end_time = datetime.now()
-            
+
+            # 收集测试结束时的性能数据
+            final_metrics = self.metrics_collector._get_cpu_memory_metrics()
+            final_gpu_metrics = self.metrics_collector._get_gpu_metrics()
+
             metrics = self._calculate_recall_metrics(test_results, recall_k_values)
             exact_matches = sum(1 for result in test_results if result.get('hit_at_1', False))
             
@@ -224,7 +249,8 @@ class QASTestService:
                 'recall_k_values': recall_k_values
             }
             
-            report_path = self._generate_report(test_results, metrics, test_config_for_report, start_time, end_time)
+            report_path = self._generate_report(test_results, metrics, test_config_for_report, start_time, end_time,
+                                               initial_metrics, initial_gpu_metrics, final_metrics, final_gpu_metrics)
             
             test_metrics = TestMetrics(
                 recall_at_1=metrics.get('recall_at_1', 0.0),
@@ -251,31 +277,26 @@ class QASTestService:
     async def run_test_with_uploaded_file(self, file: UploadFile, 
                                         top_k: Optional[int] = None,
                                         recall_k_values: Optional[List[int]] = None) -> TestResponse:
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            temp_file_path = f"temp/uploaded_test_{timestamp}.csv"
+        """
+        使用上传文件运行测试
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        temp_file_path = f"temp/uploaded_test_{timestamp}.csv"
             
-            os.makedirs("temp", exist_ok=True)
+        os.makedirs("temp", exist_ok=True)
             
-            content = await file.read()
-            with open(temp_file_path, 'wb') as f:
-                f.write(content)
+        content = await file.read()
+        with open(temp_file_path, 'wb') as f:
+            f.write(content)
             
-            request = TestRequest(
-                test_csv_path=temp_file_path,
-                top_k=top_k,
-                recall_k_values=recall_k_values
-            )
+        request = TestRequest(
+            test_csv_path=temp_file_path,
+            top_k=top_k,
+            recall_k_values=recall_k_values
+        )
             
-            response = await self.run_test(request)
+        response = await self.run_test(request)
             
-            try:
-                os.remove(temp_file_path)
-            except:
-                pass
+        os.remove(temp_file_path)
             
-            return response
-            
-        except Exception as e:
-            self.logger.error(f"上传文件测试失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"上传文件测试失败: {str(e)}")
+        return response

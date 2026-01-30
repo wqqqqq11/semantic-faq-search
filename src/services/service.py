@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 
 from src.utils.common import load_config, setup_logger
 from src.models.models import (
-    CLIPEmbedder, QueryRequest, QueryResultItem, CategoryItem, QueryResponse,
+    CLIPEmbedder, QueryResultItem, CategoryItem, QueryResponse,
     ProcessFilesResponse, VectorizeDatasetResponse, ValidationItem, ValidationResponse,
     ProcessDocumentWithPolishResponse
 )
@@ -37,6 +37,25 @@ polish_service = PolishService(config)
 api_router.embedder = embedder
 api_router.store = store
 api_router.logger = logger
+
+
+@app.on_event("startup")
+async def startup():
+    logger.info("启动服务")
+    store.connect()
+    # 确保集合存在（如果不存在则创建空集合）
+    store.create_collection(drop_existing=False)
+    store.load()
+    logger.info("Milvus连接成功")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    logger.info("关闭服务")
+    store.disconnect()
+
+# 注册路由器
+app.include_router(api_router)
 
 
 async def query_service(request):
@@ -135,23 +154,6 @@ api_router.process_uploaded_files_service = process_uploaded_files_service
 
 
 
-@app.on_event("startup")
-async def startup():
-    logger.info("启动服务")
-    store.connect()
-    # 确保集合存在（如果不存在则创建空集合）
-    store.create_collection(drop_existing=False)
-    store.load()
-    logger.info("Milvus连接成功")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    logger.info("关闭服务")
-    store.disconnect()
-
-# 注册路由器
-app.include_router(api_router)
 
 async def run_qa_test_with_upload_service(file, top_k, k_values):
     """使用上传文件运行QA测试的业务逻辑"""

@@ -30,7 +30,6 @@ semantic-faq-search/
 ├── docker/                  # Docker 部署配置
 │   ├── docker-compose.yml
 │   └── Dockerfile
-├── MD文件/                  # 项目文档目录
 ├── outputs/                 # 输出文件目录
 │   ├── polished_data/       # 润色后的数据
 │   ├── test_reports/        # 测试报告
@@ -46,8 +45,7 @@ semantic-faq-search/
 │   ├── repositories/        # 数据存储层
 │   │   └── milvus_store.py  # Milvus 向量数据库
 │   ├── routers/             # API 路由层
-│   │   ├── api_router.py    # REST API 路由
-│   │   └── __init__.py
+│   │   └── api_router.py    # REST API 路由
 │   ├── services/            # 业务服务层
 │   │   ├── service.py       # 主服务
 │   │   ├── polish_service.py # 润色服务

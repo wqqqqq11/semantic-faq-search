@@ -1,12 +1,9 @@
 from typing import Dict, List, Any, Optional
 
-import numpy as np
 import torch
-from openai import OpenAI
+import numpy as np
 from sentence_transformers import SentenceTransformer
 from pydantic import BaseModel
-
-from src.utils.common import retry
 
 
 class CLIPEmbedder:
@@ -36,17 +33,26 @@ class CLIPEmbedder:
         )
     
     def get_dimension(self) -> int:
+        """
+        获取模型维度
+        """
         return self.model.get_sentence_embedding_dimension()
 
 
 
 # API 模型定义
 class QueryRequest(BaseModel):
+    """
+    向量相似度检索请求
+    """
     query: str
     top_k: int = 10
 
 
 class QueryResultItem(BaseModel):
+    """
+    向量相似度检索结果项
+    """
     similarity_score: float
     generate_source: Optional[str] = ""
     question: str
@@ -55,16 +61,25 @@ class QueryResultItem(BaseModel):
 
 
 class CategoryItem(BaseModel):
+    """
+    类别项
+    """
     category_name: str
     items: List[QueryResultItem]
 
 
 class QueryResponse(BaseModel):
+    """
+    向量相似度检索响应
+    """
     search_info: Dict[str, Any]
     categories: List[CategoryItem]
 
 
 class ProcessFilesRequest(BaseModel):
+    """
+    处理上传文件请求
+    """
     file_paths: List[str]
     service_name: Optional[str] = ""
     user_name: Optional[str] = ""
@@ -72,6 +87,9 @@ class ProcessFilesRequest(BaseModel):
 
 
 class ProcessFilesResponse(BaseModel):
+    """
+    处理上传文件响应
+    """
     success: bool
     message: str
     qa_count: int
@@ -79,11 +97,17 @@ class ProcessFilesResponse(BaseModel):
 
 
 class ProcessUploadedFilesRequest(BaseModel):
+    """
+    处理上传文件请求
+    """
     service_name: str = ""
     user_name: str = ""
 
 
 class VectorizeDatasetResponse(BaseModel):
+    """
+    向量化数据集响应
+    """
     success: bool
     message: str
     total_records: int
@@ -92,6 +116,9 @@ class VectorizeDatasetResponse(BaseModel):
 
 
 class ValidationItem(BaseModel):
+    """
+    校验项
+    """
     row_id: Any
     question: str
     answer: str
@@ -100,6 +127,9 @@ class ValidationItem(BaseModel):
 
 
 class ValidationResponse(BaseModel):
+    """
+    校验响应
+    """
     success: bool
     message: str
     total_count: int
@@ -111,6 +141,9 @@ class ValidationResponse(BaseModel):
 
 
 class ProcessDocumentWithPolishResponse(BaseModel):
+    """
+    处理文档并润色响应
+    """
     success: bool
     message: str
     original_qa_count: int
@@ -122,12 +155,18 @@ class ProcessDocumentWithPolishResponse(BaseModel):
 
 
 class TestRequest(BaseModel):
+    """
+    测试请求
+    """
     test_csv_path: Optional[str] = None
     top_k: Optional[int] = None
     recall_k_values: Optional[List[int]] = None
 
 
 class TestMetrics(BaseModel):
+    """
+    测试指标
+    """
     recall_at_1: float
     recall_at_3: float
     recall_at_5: float
@@ -136,6 +175,9 @@ class TestMetrics(BaseModel):
 
 
 class TestResponse(BaseModel):
+    """
+    测试响应
+    """
     success: bool
     message: str
     metrics: TestMetrics
