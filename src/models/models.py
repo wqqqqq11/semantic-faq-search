@@ -20,12 +20,17 @@ class CLIPEmbedder:
         self.batch_size = self.config['batch_size']
     
     def encode(self, texts: List[str]) -> np.ndarray:
-        embeddings = []
-        for i in range(0, len(texts), self.batch_size):
-            batch = texts[i:i + self.batch_size]
-            batch_emb = self.model.encode(batch, convert_to_numpy=True, show_progress_bar=False)
-            embeddings.append(batch_emb)
-        return np.vstack(embeddings)
+        if not texts:
+            return np.array([])
+        
+        # 使用 SentenceTransformer 的内置批处理，避免手动分批
+        return self.model.encode(
+            texts, 
+            batch_size=self.batch_size,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+            device=self.device
+        )
     
     def get_dimension(self) -> int:
         return self.model.get_sentence_embedding_dimension()

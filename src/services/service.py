@@ -288,49 +288,36 @@ async def validate_qa_pairs_service(file):
 api_router.validate_qa_pairs_service = validate_qa_pairs_service
 
 
-@app.post("/process-document-with-polish", response_model=ProcessDocumentWithPolishResponse)
-async def process_document_with_polish(
-    file: UploadFile = File(...),
-    service_name: str = "",
-    user_name: str = "",
-    is_stream: bool = False,
-    drop_existing: bool = False
-):
-    """处理文档生成润色后的QA对并存入向量数据库"""
-    temp_csv_path = None
-    polished_csv_path = None
-    
+async def process_document_with_polish_service(file, service_name, user_name, is_stream, drop_existing):
+    """处理文档生成润色后的QA对并存入向量数据库的业务逻辑"""
     uploaded_files = [{
         "name": file.filename,
         "content": await file.read()
     }]
-    
+
     qa_data = document_processor.process_uploaded_files(
         uploaded_files=uploaded_files,
         service_name=service_name,
         user_name=user_name
     )
-    
+
     if not qa_data:
         raise HTTPException(status_code=400, detail="未能生成任何QA对")
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     validated_csv_path = os.path.join('data', f"validated_qa_{timestamp}.csv")
     os.makedirs('data', exist_ok=True)
     document_processor.save_to_csv(qa_data, validated_csv_path)
-    
+
     polished_qa_data = await polish_service.polish_qa_pairs(qa_data)
-    
+
     polished_csv_path = os.path.join('outputs', 'polished_data', f"polished_qa_{timestamp}.csv")
     os.makedirs(os.path.dirname(polished_csv_path), exist_ok=True)
     document_processor.save_to_csv(polished_qa_data, polished_csv_path)
-    
+
     vectorization_result = pipeline.vectorize_dataset(polished_csv_path, drop_existing)
-    
-    if temp_csv_path and os.path.exists(temp_csv_path):
-        os.remove(temp_csv_path)
-    
+
     return ProcessDocumentWithPolishResponse(
         success=True,
         message=f"处理完成，润色后生成 {len(polished_qa_data)} 条QA对",
@@ -341,6 +328,9 @@ async def process_document_with_polish(
         polished_csv_path=polished_csv_path,
         vectorization_report=vectorization_result.get('report')
     )
+
+# 设置路由器服务
+api_router.process_document_with_polish_service = process_document_with_polish_service
 
 
 def start_service():
