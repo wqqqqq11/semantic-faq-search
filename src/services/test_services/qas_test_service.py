@@ -8,9 +8,9 @@ from fastapi import HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
-from ...utils.common import load_config, setup_logger
-from ...models.models import CLIPEmbedder, TestRequest, TestMetrics, TestResponse
-from ...repositories.milvus_store import MilvusStore
+from src.utils.common import load_config, setup_logger
+from src.models.models import CLIPEmbedder, TestRequest, TestMetrics, TestResponse
+from src.repositories.milvus_store import MilvusStore
 
 
 class QASTestService:

@@ -1,26 +1,25 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-import uvicorn
-import os
-import pandas as pd
 import io
+import os
 from datetime import datetime
-from ..utils.common import load_config, setup_logger
-from ..models.models import (
+
+import pandas as pd
+import uvicorn
+from fastapi import FastAPI, HTTPException
+
+from src.utils.common import load_config, setup_logger
+from src.models.models import (
     CLIPEmbedder, QueryRequest, QueryResultItem, CategoryItem, QueryResponse,
     ProcessFilesResponse, VectorizeDatasetResponse, ValidationItem, ValidationResponse,
     ProcessDocumentWithPolishResponse
 )
-from ..repositories.milvus_store import MilvusStore
-from ..core.document_processor import DocumentProcessor
-from ..core.pipeline import Pipeline
-from ..core.qa_validator import QAValidator
-from .test_services.qas_test_service import QASTestService
-from ..models.models import TestRequest, TestResponse
-from .polish_service import PolishService
-from ..routers.api_router import router as api_router
-from pymilvus import utility
+from src.repositories.milvus_store import MilvusStore
+from src.core.document_processor import DocumentProcessor
+from src.core.pipeline import Pipeline
+from src.core.qa_validator import QAValidator
+from src.services.test_services.qas_test_service import QASTestService
+from src.services.polish_service import PolishService
+from src.routers.api_router import router as api_router
+
 
 app = FastAPI(title="多语种向量检索服务")
 

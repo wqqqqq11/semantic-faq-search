@@ -1,6 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List, Optional
-from ..models.models import QueryRequest, QueryResponse, ProcessFilesResponse, VectorizeDatasetResponse, ValidationResponse, ProcessDocumentWithPolishResponse, TestResponse
+
+from fastapi import APIRouter, UploadFile, File, HTTPException
+
+from src.models.models import QueryRequest, QueryResponse, ProcessFilesResponse, VectorizeDatasetResponse, ValidationResponse, ProcessDocumentWithPolishResponse, TestResponse
 
 # 创建路由器实例
 router = APIRouter()

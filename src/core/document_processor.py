@@ -25,10 +25,10 @@ from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 
-from ..utils.common import setup_logger
-from .qa_validator import QAValidator
-from .data_tracer import DataTracer
-from ..prompts.prompts import SALES_QA_GENERATION_PROMPT
+from src.utils.common import setup_logger
+from src.core.qa_validator import QAValidator
+from src.core.data_tracer import DataTracer
+from src.prompts.prompts import SALES_QA_GENERATION_PROMPT
 
 
 class DocumentProcessor:

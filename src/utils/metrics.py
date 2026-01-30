@@ -1,10 +1,10 @@
 import json
 import time
+from typing import Dict, List, Any, Optional
 import psutil
 import pynvml
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional
 from contextlib import contextmanager
 
 

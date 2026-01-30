@@ -2,9 +2,10 @@ import os
 import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+
 from langchain_core.documents import Document
 
-from ..utils.common import setup_logger
+from src.utils.common import setup_logger
 
 
 class DataTracer:

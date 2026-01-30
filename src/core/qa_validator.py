@@ -3,10 +3,11 @@ QA对校验器，用于验证问答对的质量和指代明确性
 """
 import re
 from typing import List, Dict, Any, Tuple
+
 from openai import OpenAI
 
-from ..utils.common import setup_logger
-from ..prompts.prompts import QA_VALIDATION_PROMPT
+from src.utils.common import setup_logger
+from src.prompts.prompts import QA_VALIDATION_PROMPT
 
 
 class QAValidator:

@@ -4,11 +4,11 @@ from typing import Dict, List, Any
 
 import numpy as np
 
-from ..utils.common import load_config, setup_logger
-from ..utils.io_utils import DataLoader
-from ..models.models import CLIPEmbedder
-from ..repositories.milvus_store import MilvusStore
-from ..utils.metrics import MetricsCollector
+from src.utils.common import load_config, setup_logger
+from src.utils.io_utils import DataLoader
+from src.models.models import CLIPEmbedder
+from src.repositories.milvus_store import MilvusStore
+from src.utils.metrics import MetricsCollector
 
 
 class Pipeline:
