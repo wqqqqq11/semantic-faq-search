@@ -20,10 +20,11 @@ class CLIPEmbedder:
         self.batch_size = self.config['batch_size']
     
     def encode(self, texts: List[str]) -> np.ndarray:
+        """ 样本向量化"""
+
         if not texts:
             return np.array([])
         
-        # 使用 SentenceTransformer 的内置批处理，避免手动分批
         return self.model.encode(
             texts, 
             batch_size=self.batch_size,
@@ -157,3 +158,25 @@ class ProcessDocumentWithPolishResponse(BaseModel):
     validated_csv_path: str
     polished_csv_path: str
     vectorization_report: Optional[Dict[str, Any]] = None
+
+
+class TestRequest(BaseModel):
+    test_csv_path: Optional[str] = None
+    top_k: Optional[int] = None
+    recall_k_values: Optional[List[int]] = None
+
+
+class TestMetrics(BaseModel):
+    recall_at_1: float
+    recall_at_3: float
+    recall_at_5: float
+    total_queries: int
+    exact_matches: int
+
+
+class TestResponse(BaseModel):
+    success: bool
+    message: str
+    metrics: TestMetrics
+    report_path: str
+    timestamp: str

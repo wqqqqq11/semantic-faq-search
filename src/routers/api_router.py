@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List, Optional
-from ..models.models import QueryRequest, QueryResponse, ProcessFilesResponse, VectorizeDatasetResponse, ValidationResponse, ProcessDocumentWithPolishResponse
+from ..models.models import QueryRequest, QueryResponse, ProcessFilesResponse, VectorizeDatasetResponse, ValidationResponse, ProcessDocumentWithPolishResponse, TestResponse
 
 # 创建路由器实例
 router = APIRouter()
@@ -11,6 +11,7 @@ router.process_uploaded_files_service = None
 router.vectorize_dataset_upload_service = None
 router.validate_qa_pairs_service = None
 router.process_document_with_polish_service = None
+router.run_qa_test_with_upload_service = None
 
 @router.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
@@ -71,3 +72,35 @@ async def process_document_with_polish(
         raise HTTPException(status_code=400, detail="文件名不能为空")
 
     return await router.process_document_with_polish_service(file, service_name, user_name, is_stream, drop_existing)
+
+
+@router.post("/test/run-qa-test-upload", response_model=TestResponse)
+async def run_qa_test_with_upload(
+    file: UploadFile = File(...),
+    top_k: Optional[int] = None,
+    recall_k_values: Optional[str] = None
+):
+    """
+        使用上传文件运行QA测试
+    """
+    # 初步验证
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+
+    # 解析recall_k_values参数
+    k_values = None
+    if recall_k_values:
+        try:
+            k_values = [int(k.strip()) for k in recall_k_values.split(',')]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="recall_k_values格式错误，应为逗号分隔的数字")
+
+    return await router.run_qa_test_with_upload_service(file, top_k, k_values)
+
+
+@router.get("/health")
+async def health():
+    """
+        健康检查接口
+    """
+    return {"status": "healthy", "service": "multilingual-vector-search"}

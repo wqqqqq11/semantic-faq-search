@@ -1,36 +1,16 @@
-from fastapi import HTTPException, UploadFile, File
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-import pandas as pd
 import json
 import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pandas as pd
+from fastapi import HTTPException, UploadFile, File
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+
 from ...utils.common import load_config, setup_logger
-from ...models.models import CLIPEmbedder
+from ...models.models import CLIPEmbedder, TestRequest, TestMetrics, TestResponse
 from ...repositories.milvus_store import MilvusStore
-
-
-class TestRequest(BaseModel):
-    test_csv_path: Optional[str] = None
-    top_k: Optional[int] = None
-    recall_k_values: Optional[List[int]] = None
-
-
-class TestMetrics(BaseModel):
-    recall_at_1: float
-    recall_at_3: float
-    recall_at_5: float
-    total_queries: int
-    exact_matches: int
-
-
-class TestResponse(BaseModel):
-    success: bool
-    message: str
-    metrics: TestMetrics
-    report_path: str
-    timestamp: str
 
 
 class QASTestService:

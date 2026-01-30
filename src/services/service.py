@@ -16,7 +16,8 @@ from ..repositories.milvus_store import MilvusStore
 from ..core.document_processor import DocumentProcessor
 from ..core.pipeline import Pipeline
 from ..core.qa_validator import QAValidator
-from .test_services.qas_test_service import QASTestService, TestRequest, TestResponse
+from .test_services.qas_test_service import QASTestService
+from ..models.models import TestRequest, TestResponse
 from .polish_service import PolishService
 from ..routers.api_router import router as api_router
 from pymilvus import utility
@@ -153,31 +154,12 @@ async def shutdown():
 # 注册路由器
 app.include_router(api_router)
 
+async def run_qa_test_with_upload_service(file, top_k, k_values):
+    """使用上传文件运行QA测试的业务逻辑"""
+    return await test_service.run_test_with_uploaded_file(file, top_k, k_values)
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "service": "multilingual-vector-search"}
-
-@app.post("/test/run-qa-test-upload", response_model=TestResponse)
-async def run_qa_test_with_upload(
-    file: UploadFile = File(...),
-    top_k: Optional[int] = None,
-    recall_k_values: Optional[str] = None
-):
-    """使用上传文件运行QA测试"""
-    try:
-        # 解析recall_k_values参数
-        k_values = None
-        if recall_k_values:
-            try:
-                k_values = [int(k.strip()) for k in recall_k_values.split(',')]
-            except ValueError:
-                raise HTTPException(status_code=400, detail="recall_k_values格式错误，应为逗号分隔的数字")
-        
-        return await test_service.run_test_with_uploaded_file(file, top_k, k_values)
-    except Exception as e:
-        logger.error(f"上传文件QA测试错误: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+# 设置路由器服务
+api_router.run_qa_test_with_upload_service = run_qa_test_with_upload_service
 
 
 async def vectorize_dataset_upload_service(file, drop_existing):
