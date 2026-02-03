@@ -129,6 +129,7 @@ class MilvusStore:
         self.collection.load()
     
     def search(self, query_vector: np.ndarray, top_k: int = 10) -> List[Dict[str, Any]]:
+        """向量数据库搜索"""
         nprobe = self.config.get('nprobe', 64)
         search_params = {"metric_type": self.config['metric_type'], "params": {"nprobe": nprobe}}
         

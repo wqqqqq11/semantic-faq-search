@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 
 import pandas as pd
+import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
@@ -10,7 +11,7 @@ from src.utils.common import load_config, setup_logger
 from src.models.models import (
     CLIPEmbedder, QueryResultItem, CategoryItem, QueryResponse,
     ProcessFilesResponse, VectorizeDatasetResponse, ValidationItem, ValidationResponse,
-    ProcessDocumentWithPolishResponse
+    ProcessDocumentWithPolishResponse, EnhanceAnswersResponse
 )
 from src.repositories.milvus_store import MilvusStore
 from src.core.document_processor import DocumentProcessor
@@ -314,6 +315,86 @@ async def process_document_with_polish_service(file, service_name, user_name, is
 
 # 设置路由器服务
 api_router.process_document_with_polish_service = process_document_with_polish_service
+
+
+async def enhance_answers_service(files):
+    """批量增强答案的业务逻辑"""
+    all_data = []
+    for file in files:
+        content = await file.read()
+        df = pd.read_csv(io.BytesIO(content), encoding='utf-8-sig')
+        all_data.extend(df.to_dict('records'))
+
+    if not all_data:
+        return EnhanceAnswersResponse(
+            success=False,
+            message="没有找到有效的CSV数据",
+            output_path="",
+            total_processed=0
+        )
+
+    # 获取配置
+    polish_config = config.get('polish', {})
+    base_url = polish_config.get('base_url', 'http://192.168.151.84:8010')
+    timeout = polish_config.get('timeout', 60)
+    batch_size = polish_config.get('batch_size', 50)
+    api_url = f"{base_url}/api/v1/answer/enhance"
+
+    enhanced_answers = []
+
+    # 分批处理
+    for i in range(0, len(all_data), batch_size):
+        batch_data = all_data[i:i + batch_size]
+
+        # 准备当前批次的数据
+        enhance_data = [
+            {"question": str(item.get('question', '')), "answer": str(item.get('answer', ''))}
+            for item in batch_data
+        ]
+
+        # 调用外部API
+        response = requests.post(
+            api_url,
+            json=enhance_data,
+            headers={"Content-Type": "application/json"},
+            timeout=timeout
+        )
+
+        if response.status_code != 200:
+            return EnhanceAnswersResponse(
+                success=False,
+                message=f"第 {i//batch_size + 1} 批次API调用失败",
+                output_path="",
+                total_processed=0
+            )
+
+        result = response.json()
+        batch_enhanced = result.get('data', {}).get('enhanced_answers', [])
+        enhanced_answers.extend(batch_enhanced)
+
+    # 更新数据
+    for i, item in enumerate(all_data):
+        if i < len(enhanced_answers):
+            item['answer'] = enhanced_answers[i]
+
+    # 保存到新文件
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = "outputs/polished_data"
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"enhanced_answers_{timestamp}.csv")
+
+    result_df = pd.DataFrame(all_data)
+    result_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+
+    return EnhanceAnswersResponse(
+        success=True,
+        message=f"成功增强 {len(all_data)} 条答案",
+        output_path=output_path,
+        total_processed=len(all_data)
+    )
+
+# 设置路由器服务
+api_router.enhance_answers_service = enhance_answers_service
 
 
 def start_service():

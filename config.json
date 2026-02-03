@@ -14,7 +14,7 @@
   "document_processing": {
     "chunk_size": 500,
     "chunk_overlap": 50,
-    "max_qa_pairs_per_chunk": 5,
+    "max_qa_pairs_per_chunk": 2,
     "max_content_length": 4000,
     "output_csv": "data/processed_qa_pairs.csv",
     "temp_dir": "temp",
@@ -53,7 +53,7 @@
     "index_type": "IVF_FLAT",
     "metric_type": "COSINE",
     "nlist": 1024,
-    "nprobe": 64,
+    "nprobe": 512,
     "milvus_config_path": "tool_configs/milvus_config.json"
   },
   "service": {

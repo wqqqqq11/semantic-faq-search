@@ -183,3 +183,21 @@ class TestResponse(BaseModel):
     metrics: TestMetrics
     report_path: str
     timestamp: str
+
+
+class EnhanceRequestItem(BaseModel):
+    question: str
+    answer: str
+
+
+class EnhanceResponse(BaseModel):
+    code: int
+    message: str
+    data: Dict[str, Any]
+
+
+class EnhanceAnswersResponse(BaseModel):
+    success: bool
+    message: str
+    output_path: str
+    total_processed: int

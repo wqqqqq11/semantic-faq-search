@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 
-from src.models.models import QueryRequest, QueryResponse, ProcessFilesResponse, VectorizeDatasetResponse, ValidationResponse, ProcessDocumentWithPolishResponse, TestResponse
+from src.models.models import QueryRequest, QueryResponse, ProcessFilesResponse, VectorizeDatasetResponse, ValidationResponse, ProcessDocumentWithPolishResponse, TestResponse, EnhanceAnswersResponse
 
 # 创建路由器实例
 router = APIRouter()
@@ -14,6 +14,7 @@ router.vectorize_dataset_upload_service = None
 router.validate_qa_pairs_service = None
 router.process_document_with_polish_service = None
 router.run_qa_test_with_upload_service = None
+router.enhance_answers_service = None
 
 @router.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
@@ -98,6 +99,14 @@ async def run_qa_test_with_upload(
             raise HTTPException(status_code=400, detail="recall_k_values格式错误，应为逗号分隔的数字")
 
     return await router.run_qa_test_with_upload_service(file, top_k, k_values)
+
+
+@router.post("/enhance-answers", response_model=EnhanceAnswersResponse)
+async def enhance_answers(files: List[UploadFile] = File(...)):
+    """
+        批量增强答案内容
+    """
+    return await router.enhance_answers_service(files)
 
 
 @router.get("/health")

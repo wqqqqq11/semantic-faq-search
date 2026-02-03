@@ -54,6 +54,20 @@ services:
     networks:
       - milvus
     restart: unless-stopped
+  
+  milvus-attu:
+    container_name: milvus-attu
+    image: zilliz/attu
+    environment:
+      - MILVUS_URL=http://milvus-standalone:19530
+    ports:
+      - "3000:3000"
+    depends_on:
+      - milvus-standalone
+    networks:
+      - milvus
+    restart: unless-stopped
+
 
 
   app:
