@@ -251,6 +251,11 @@ async def validate_qa_pairs_service(file):
     output_path = None
     if valid_count > 0:
         valid_df = df.loc[valid_indices].copy()
+        # 清理question和answer字段中的换行符，确保CSV格式规范
+        for col in ['question', 'answer']:
+            if col in valid_df.columns:
+                valid_df[col] = valid_df[col].astype(str).str.replace('\n', '').str.replace('\r', '')
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_dir = os.path.join('data', 'validated_data')
         os.makedirs(output_dir, exist_ok=True)
@@ -338,7 +343,7 @@ async def enhance_answers_service(files):
     base_url = polish_config.get('base_url', 'http://192.168.151.84:8010')
     timeout = polish_config.get('timeout', 60)
     batch_size = polish_config.get('batch_size', 50)
-    api_url = f"{base_url}/api/v1/answer/enhance"
+    api_url = f"{base_url}/api/v1/answer/sync/enhance"
 
     enhanced_answers = []
 
@@ -376,6 +381,11 @@ async def enhance_answers_service(files):
     for i, item in enumerate(all_data):
         if i < len(enhanced_answers):
             item['answer'] = enhanced_answers[i]
+
+    # 清理answer字段中的换行符，确保CSV格式规范
+    for item in all_data:
+        if 'answer' in item and item['answer']:
+            item['answer'] = str(item['answer']).replace('\n', '').replace('\r', '')
 
     # 保存到新文件
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
