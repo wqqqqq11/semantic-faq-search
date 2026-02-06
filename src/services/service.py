@@ -1,9 +1,11 @@
 import io
 import os
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 
 import pandas as pd
-import requests
+import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
@@ -61,12 +63,17 @@ app.include_router(api_router)
 
 async def query_service(request):
     """查询服务业务逻辑"""
-    query_vector = embedder.encode([request.query])[0]
+    # 将向量化和搜索操作放入线程池，避免阻塞事件循环
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        query_vector = await loop.run_in_executor(executor, lambda: embedder.encode([request.query])[0])
 
-    results = store.search(
-        query_vector=query_vector,
-        top_k=min(request.top_k, 100)
-    )
+        results = await loop.run_in_executor(
+            executor,
+            store.search,
+            query_vector,
+            min(request.top_k, 100)
+        )
 
     # 按类别分组结果
     category_dict = {}
@@ -125,12 +132,16 @@ async def process_uploaded_files_service(files, service_name, user_name):
             "content": content
         })
 
-    # 处理文件
-    qa_data = document_processor.process_uploaded_files(
-        uploaded_files=uploaded_files,
-        service_name=service_name,
-        user_name=user_name
-    )
+    # 处理文件（文档处理是I/O密集型操作，放入线程池）
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        qa_data = await loop.run_in_executor(
+            executor,
+            document_processor.process_uploaded_files,
+            uploaded_files,
+            service_name,
+            user_name
+        )
 
     if not qa_data:
         return ProcessFilesResponse(
@@ -140,8 +151,12 @@ async def process_uploaded_files_service(files, service_name, user_name):
             output_path=""
         )
 
-    # 保存到CSV
-    output_path = document_processor.save_to_csv(qa_data)
+    # 保存到CSV（也放入线程池）
+    output_path = await loop.run_in_executor(
+        executor,
+        document_processor.save_to_csv,
+        qa_data
+    )
 
     return ProcessFilesResponse(
         success=True,
@@ -181,7 +196,10 @@ async def vectorize_dataset_upload_service(file, drop_existing):
     if drop_existing is None:
         drop_existing = config.get('vectorization', {}).get('drop_existing', False)
 
-    result = pipeline.vectorize_dataset(temp_file_path, drop_existing)
+    # 将向量化和数据库操作放入线程池（这些是CPU密集型操作）
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        result = await loop.run_in_executor(executor, pipeline.vectorize_dataset, temp_file_path, drop_existing)
 
     report_path = None
     if result.get('report'):
@@ -211,7 +229,10 @@ api_router.vectorize_dataset_upload_service = vectorize_dataset_upload_service
 async def validate_qa_pairs_service(file):
     """校验CSV文件中的question和answer字段的业务逻辑"""
     content = await file.read()
-    df = pd.read_csv(io.BytesIO(content), encoding='utf-8-sig')
+    # 将pandas操作放入线程池
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        df = await loop.run_in_executor(executor, pd.read_csv, io.BytesIO(content), {'encoding': 'utf-8-sig'})
 
     required_columns = ['question', 'answer']
     missing_columns = [col for col in required_columns if col not in df.columns]
@@ -260,7 +281,13 @@ async def validate_qa_pairs_service(file):
         output_dir = os.path.join('data', 'validated_data')
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, f"validated_qa_pairs_{timestamp}.csv")
-        valid_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        # 将pandas保存操作放入线程池
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            await loop.run_in_executor(
+                executor,
+                lambda: valid_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+            )
 
     return ValidationResponse(
         success=True,
@@ -284,11 +311,16 @@ async def process_document_with_polish_service(file, service_name, user_name, is
         "content": await file.read()
     }]
 
-    qa_data = document_processor.process_uploaded_files(
-        uploaded_files=uploaded_files,
-        service_name=service_name,
-        user_name=user_name
-    )
+    # 处理文件（文档处理是I/O密集型操作）
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        qa_data = await loop.run_in_executor(
+            executor,
+            document_processor.process_uploaded_files,
+            uploaded_files,
+            service_name,
+            user_name
+        )
 
     if not qa_data:
         raise HTTPException(status_code=400, detail="未能生成任何QA对")
@@ -297,15 +329,33 @@ async def process_document_with_polish_service(file, service_name, user_name, is
 
     validated_csv_path = os.path.join('data', f"validated_qa_{timestamp}.csv")
     os.makedirs('data', exist_ok=True)
-    document_processor.save_to_csv(qa_data, validated_csv_path)
+    # 保存验证后的CSV
+    await loop.run_in_executor(
+        executor,
+        document_processor.save_to_csv,
+        qa_data,
+        validated_csv_path
+    )
 
     polished_qa_data = await polish_service.polish_qa_pairs(qa_data)
 
     polished_csv_path = os.path.join('outputs', 'polished_data', f"polished_qa_{timestamp}.csv")
     os.makedirs(os.path.dirname(polished_csv_path), exist_ok=True)
-    document_processor.save_to_csv(polished_qa_data, polished_csv_path)
+    # 保存润色后的CSV
+    await loop.run_in_executor(
+        executor,
+        document_processor.save_to_csv,
+        polished_qa_data,
+        polished_csv_path
+    )
 
-    vectorization_result = pipeline.vectorize_dataset(polished_csv_path, drop_existing)
+    # 向量化和存储操作（CPU和I/O密集型）
+    vectorization_result = await loop.run_in_executor(
+        executor,
+        pipeline.vectorize_dataset,
+        polished_csv_path,
+        drop_existing
+    )
 
     return ProcessDocumentWithPolishResponse(
         success=True,
@@ -325,9 +375,14 @@ api_router.process_document_with_polish_service = process_document_with_polish_s
 async def enhance_answers_service(files):
     """批量增强答案的业务逻辑"""
     all_data = []
+    loop = asyncio.get_event_loop()
+
+    # 异步读取和解析所有文件
     for file in files:
         content = await file.read()
-        df = pd.read_csv(io.BytesIO(content), encoding='utf-8-sig')
+        # 将pandas操作放入线程池，避免阻塞事件循环
+        with ThreadPoolExecutor() as executor:
+            df = await loop.run_in_executor(executor, pd.read_csv, io.BytesIO(content), {'encoding': 'utf-8-sig'})
         all_data.extend(df.to_dict('records'))
 
     if not all_data:
@@ -348,34 +403,34 @@ async def enhance_answers_service(files):
     enhanced_answers = []
 
     # 分批处理
-    for i in range(0, len(all_data), batch_size):
-        batch_data = all_data[i:i + batch_size]
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for i in range(0, len(all_data), batch_size):
+            batch_data = all_data[i:i + batch_size]
 
-        # 准备当前批次的数据
-        enhance_data = [
-            {"question": str(item.get('question', '')), "answer": str(item.get('answer', ''))}
-            for item in batch_data
-        ]
+            # 准备当前批次的数据
+            enhance_data = [
+                {"question": str(item.get('question', '')), "answer": str(item.get('answer', ''))}
+                for item in batch_data
+            ]
 
-        # 调用外部API
-        response = requests.post(
-            api_url,
-            json=enhance_data,
-            headers={"Content-Type": "application/json"},
-            timeout=timeout
-        )
-
-        if response.status_code != 200:
-            return EnhanceAnswersResponse(
-                success=False,
-                message=f"第 {i//batch_size + 1} 批次API调用失败",
-                output_path="",
-                total_processed=0
+            # 调用外部API（真正的异步）
+            response = await client.post(
+                api_url,
+                json=enhance_data,
+                headers={"Content-Type": "application/json"}
             )
 
-        result = response.json()
-        batch_enhanced = result.get('data', {}).get('enhanced_answers', [])
-        enhanced_answers.extend(batch_enhanced)
+            if response.status_code != 200:
+                return EnhanceAnswersResponse(
+                    success=False,
+                    message=f"第 {i//batch_size + 1} 批次API调用失败",
+                    output_path="",
+                    total_processed=0
+                )
+
+            result = response.json()
+            batch_enhanced = result.get('data', {}).get('enhanced_answers', [])
+            enhanced_answers.extend(batch_enhanced)
 
     # 更新数据
     for i, item in enumerate(all_data):
@@ -394,7 +449,13 @@ async def enhance_answers_service(files):
     output_path = os.path.join(output_dir, f"enhanced_answers_{timestamp}.csv")
 
     result_df = pd.DataFrame(all_data)
-    result_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+    # 将pandas保存操作放入线程池
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        await loop.run_in_executor(
+            executor,
+            lambda: result_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        )
 
     return EnhanceAnswersResponse(
         success=True,
