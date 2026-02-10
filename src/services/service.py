@@ -232,7 +232,10 @@ async def validate_qa_pairs_service(file):
     # 将pandas操作放入线程池
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor() as executor:
-        df = await loop.run_in_executor(executor, pd.read_csv, io.BytesIO(content), {'encoding': 'utf-8-sig'})
+        df = await loop.run_in_executor(
+            executor,
+            lambda: pd.read_csv(io.BytesIO(content), encoding='utf-8-sig')
+        )
 
     required_columns = ['question', 'answer']
     missing_columns = [col for col in required_columns if col not in df.columns]
@@ -382,7 +385,10 @@ async def enhance_answers_service(files):
         content = await file.read()
         # 将pandas操作放入线程池，避免阻塞事件循环
         with ThreadPoolExecutor() as executor:
-            df = await loop.run_in_executor(executor, pd.read_csv, io.BytesIO(content), {'encoding': 'utf-8-sig'})
+            df = await loop.run_in_executor(
+                executor,
+                lambda: pd.read_csv(io.BytesIO(content), encoding='utf-8-sig')
+            )
         all_data.extend(df.to_dict('records'))
 
     if not all_data:
