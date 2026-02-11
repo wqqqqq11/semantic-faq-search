@@ -6,7 +6,7 @@ import numpy as np
 
 from src.utils.common import load_config, setup_logger
 from src.utils.io_utils import DataLoader
-from src.models.models import CLIPEmbedder
+from src.models.models import BGEEmbedder
 from src.repositories.milvus_store import MilvusStore
 from src.utils.metrics import MetricsCollector
 
@@ -21,7 +21,7 @@ class Pipeline:
         self.vector_field_name = self.field_config.get("vector_field", {}).get("name", "vector")
 
         self.loader = DataLoader(self.config)
-        self.embedder = CLIPEmbedder(self.config)
+        self.embedder = BGEEmbedder(self.config)
         self.store = MilvusStore(self.config)
         self.metrics = MetricsCollector(self.config)
 

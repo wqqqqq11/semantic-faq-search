@@ -256,7 +256,7 @@ curl -X POST http://localhost:8888/test/run-qa-test-upload \
 
 ```json
 {
-  "clip": {
+  "embedding": {
     "model_name": "BAAI/bge-large-zh-v1.5",
     "batch_size": 128,
     "device": "cuda",

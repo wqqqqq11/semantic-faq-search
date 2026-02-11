@@ -8,7 +8,7 @@ from fastapi import HTTPException, UploadFile
 from typing import List, Dict, Any, Optional
 
 from src.utils.common import load_config, setup_logger
-from src.models.models import CLIPEmbedder, TestRequest, TestMetrics, TestResponse
+from src.models.models import BGEEmbedder, TestRequest, TestMetrics, TestResponse
 from src.repositories.milvus_store import MilvusStore
 from src.utils.metrics import MetricsCollector
 
@@ -18,7 +18,7 @@ class QASTestService:
         self.config = load_config()
         self.test_config = self._load_test_config()
         self.logger = setup_logger("QASTestService", self.config)
-        self.embedder = CLIPEmbedder(self.config)
+        self.embedder = BGEEmbedder(self.config)
         self.store = MilvusStore(self.config)
         self.metrics_collector = MetricsCollector(self.config)
         

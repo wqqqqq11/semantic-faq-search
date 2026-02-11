@@ -5,9 +5,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from pydantic import BaseModel
 
 
-class CLIPEmbedder:
+class BGEEmbedder:
     def __init__(self, config: Dict[str, Any]):
-        cfg = config['clip']
+        cfg = config['embedding']
         self._embeddings = HuggingFaceEmbeddings(
             model_name=cfg['model_name'],
             model_kwargs={

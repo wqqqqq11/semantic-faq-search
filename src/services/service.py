@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 
 from src.utils.common import load_config, setup_logger
 from src.models.models import (
-    CLIPEmbedder, QueryResultItem, CategoryItem, QueryResponse,
+    BGEEmbedder, QueryResultItem, CategoryItem, QueryResponse,
     ProcessFilesResponse, VectorizeDatasetResponse, ValidationItem, ValidationResponse,
     ProcessDocumentWithPolishResponse, EnhanceAnswersResponse
 )
@@ -28,7 +28,7 @@ app = FastAPI(title="多语种向量检索服务")
 
 config = load_config()
 logger = setup_logger("Service", config)
-embedder = CLIPEmbedder(config)
+embedder = BGEEmbedder(config)
 store = MilvusStore(config)
 document_processor = DocumentProcessor(config)
 pipeline = Pipeline()
