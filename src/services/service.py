@@ -352,7 +352,7 @@ async def process_document_with_polish_service(file, service_name, user_name, is
         polished_csv_path
     )
 
-    # 向量化和存储操作（CPU和I/O密集型）
+    # 向量化和存储操作
     vectorization_result = await loop.run_in_executor(
         executor,
         pipeline.vectorize_dataset,
@@ -406,30 +406,39 @@ async def enhance_answers_service(files):
     batch_size = polish_config.get('batch_size', 50)
     api_url = f"{base_url}/api/v1/answer/sync/enhance"
 
-    enhanced_answers = []
+    # 准备所有批次
+    batch_requests = []
+    for i in range(0, len(all_data), batch_size):
+        batch_data = all_data[i:i + batch_size]
+        enhance_data = [
+            {"question": str(item.get('question', '')), "answer": str(item.get('answer', ''))}
+            for item in batch_data
+        ]
+        batch_requests.append((i, enhance_data))
 
-    # 分批处理
+    # 并发调用所有批次
     async with httpx.AsyncClient(timeout=timeout) as client:
-        for i in range(0, len(all_data), batch_size):
-            batch_data = all_data[i:i + batch_size]
+        tasks = [
+            client.post(api_url, json=enhance_data, headers={"Content-Type": "application/json"})
+            for _, enhance_data in batch_requests
+        ]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # 准备当前批次的数据
-            enhance_data = [
-                {"question": str(item.get('question', '')), "answer": str(item.get('answer', ''))}
-                for item in batch_data
-            ]
-
-            # 调用外部API（真正的异步）
-            response = await client.post(
-                api_url,
-                json=enhance_data,
-                headers={"Content-Type": "application/json"}
-            )
+        # 处理响应，按批次顺序
+        enhanced_answers = []
+        for (batch_idx, _), response in zip(batch_requests, responses):
+            if isinstance(response, Exception):
+                return EnhanceAnswersResponse(
+                    success=False,
+                    message=f"第 {batch_idx//batch_size + 1} 批次API调用异常: {str(response)}",
+                    output_path="",
+                    total_processed=0
+                )
 
             if response.status_code != 200:
                 return EnhanceAnswersResponse(
                     success=False,
-                    message=f"第 {i//batch_size + 1} 批次API调用失败",
+                    message=f"第 {batch_idx//batch_size + 1} 批次API调用失败，状态码: {response.status_code}",
                     output_path="",
                     total_processed=0
                 )
