@@ -132,7 +132,6 @@ async def process_uploaded_files_service(files, service_name, user_name):
             "content": content
         })
 
-    # 处理文件（文档处理是I/O密集型操作，放入线程池）
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor() as executor:
         qa_data = await loop.run_in_executor(
@@ -143,20 +142,19 @@ async def process_uploaded_files_service(files, service_name, user_name):
             user_name
         )
 
-    if not qa_data:
-        return ProcessFilesResponse(
-            success=False,
-            message="未能生成任何QA对",
-            qa_count=0,
-            output_path=""
-        )
+        if not qa_data:
+            return ProcessFilesResponse(
+                success=False,
+                message="未能生成任何QA对",
+                qa_count=0,
+                output_path=""
+            )
 
-    # 保存到CSV（也放入线程池）
-    output_path = await loop.run_in_executor(
-        executor,
-        document_processor.save_to_csv,
-        qa_data
-    )
+        output_path = await loop.run_in_executor(
+            executor,
+            document_processor.save_to_csv,
+            qa_data
+        )
 
     return ProcessFilesResponse(
         success=True,
@@ -314,7 +312,6 @@ async def process_document_with_polish_service(file, service_name, user_name, is
         "content": await file.read()
     }]
 
-    # 处理文件（文档处理是I/O密集型操作）
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor() as executor:
         qa_data = await loop.run_in_executor(
@@ -325,40 +322,40 @@ async def process_document_with_polish_service(file, service_name, user_name, is
             user_name
         )
 
-    if not qa_data:
-        raise HTTPException(status_code=400, detail="未能生成任何QA对")
+        if not qa_data:
+            raise HTTPException(status_code=400, detail="未能生成任何QA对")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    validated_csv_path = os.path.join('data', f"validated_qa_{timestamp}.csv")
-    os.makedirs('data', exist_ok=True)
-    # 保存验证后的CSV
-    await loop.run_in_executor(
-        executor,
-        document_processor.save_to_csv,
-        qa_data,
-        validated_csv_path
-    )
+        validated_csv_path = os.path.join('data', f"validated_qa_{timestamp}.csv")
+        os.makedirs('data', exist_ok=True)
+        # 保存验证后的CSV
+        await loop.run_in_executor(
+            executor,
+            document_processor.save_to_csv,
+            qa_data,
+            validated_csv_path
+        )
 
-    polished_qa_data = await polish_service.polish_qa_pairs(qa_data)
+        polished_qa_data = await polish_service.polish_qa_pairs(qa_data)
 
-    polished_csv_path = os.path.join('outputs', 'polished_data', f"polished_qa_{timestamp}.csv")
-    os.makedirs(os.path.dirname(polished_csv_path), exist_ok=True)
-    # 保存润色后的CSV
-    await loop.run_in_executor(
-        executor,
-        document_processor.save_to_csv,
-        polished_qa_data,
-        polished_csv_path
-    )
+        polished_csv_path = os.path.join('outputs', 'polished_data', f"polished_qa_{timestamp}.csv")
+        os.makedirs(os.path.dirname(polished_csv_path), exist_ok=True)
+        # 保存润色后的CSV
+        await loop.run_in_executor(
+            executor,
+            document_processor.save_to_csv,
+            polished_qa_data,
+            polished_csv_path
+        )
 
-    # 向量化和存储操作
-    vectorization_result = await loop.run_in_executor(
-        executor,
-        pipeline.vectorize_dataset,
-        polished_csv_path,
-        drop_existing
-    )
+        # 向量化和存储操作
+        vectorization_result = await loop.run_in_executor(
+            executor,
+            pipeline.vectorize_dataset,
+            polished_csv_path,
+            drop_existing
+        )
 
     return ProcessDocumentWithPolishResponse(
         success=True,

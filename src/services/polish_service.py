@@ -16,7 +16,7 @@ class PolishService:
         self.batch_size = self.config.get('batch_size', 50)
     
     async def _polish_batch(self, client: httpx.AsyncClient, batch: List[Dict[str, Any]]) -> List[str]:
-        url = f"{self.base_url}/api/v1/answer/enhance"
+        url = f"{self.base_url}/api/v1/answer/sync/enhance"
         
         request_data = []
         for qa in batch:

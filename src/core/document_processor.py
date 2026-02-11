@@ -8,8 +8,11 @@ from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from openai import OpenAI
 from langchain_core.documents import Document
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableLambda
+from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     CSVLoader,
@@ -77,11 +80,14 @@ class DocumentProcessor:
         self.qwen_config = config["qwen"]
         self.logger = setup_logger("DocumentProcessor", config)
 
-        self.client = OpenAI(
+        self.llm = ChatOpenAI(
             api_key=self.qwen_config["api_key"],
             base_url=self.qwen_config["base_url"],
-            timeout=self.qwen_config["timeout"],
+            model=self.qwen_config["model"],
+            temperature=0,
+            request_timeout=self.qwen_config.get("timeout", 30),
         )
+        self._qa_prompt = ChatPromptTemplate.from_template(SALES_QA_GENERATION_PROMPT)
 
         os.makedirs(self.doc_config["temp_dir"], exist_ok=True)
 
@@ -525,27 +531,33 @@ class DocumentProcessor:
         if hasattr(text_chunk, "metadata") and isinstance(text_chunk.metadata, dict):
             section_title = str(text_chunk.metadata.get("section_title") or "")
 
-        prompt = self._build_sales_prompt(chunk_text=chunk_text, max_pairs=max_pairs, section_title=section_title)
+        header = []
+        if section_title:
+            header.append(f"章节/小节标题：{section_title}")
+        header.append(f"最多生成：{max_pairs} 组问答")
 
-        response = self.client.chat.completions.create(
-            model=self.qwen_config["model"],
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
+        chain = (
+            self._qa_prompt
+            | self.llm
+            | StrOutputParser()
+            | RunnableLambda(self._parse_qa_output)
         )
+        result = chain.invoke({
+            "max_pairs": max_pairs,
+            "header_text": "\n".join(header),
+            "chunk_text": chunk_text,
+        })
+        return result[:max_pairs] if result else []
 
-        response_text = (response.choices[0].message.content or "").strip()
-        if not response_text:
-            return []
-
-        qa_pairs: List[Dict[str, str]] = []
-        blocks = [b.strip() for b in response_text.split("\n\n") if b.strip()]
-        for block in blocks:
+    def _parse_qa_output(self, text: str) -> List[Dict[str, str]]:
+        out: List[Dict[str, str]] = []
+        for b in (x.strip() for x in (text or "").strip().split("\n\n") if x.strip()):
             # 允许模型多输出空行，但要求必须同时含 Q: 和 A:
-            if "Q:" not in block or "A:" not in block:
+            if "Q:" not in b or "A:" not in b:
                 continue
 
             # 优先按 A: 切分
-            parts = block.split("A:", 1)
+            parts = b.split("A:", 1)
             if len(parts) != 2:
                 continue
 
@@ -562,12 +574,9 @@ class DocumentProcessor:
             if bad_q:
                 continue
 
-            qa_pairs.append({"question": question, "answer": answer})
+            out.append({"question": question, "answer": answer})
 
-            if len(qa_pairs) >= max_pairs:
-                break
-
-        return qa_pairs
+        return out
 
 
     # -----------------------------

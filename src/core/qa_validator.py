@@ -4,7 +4,9 @@ QA对校验器，用于验证问答对的质量和指代明确性
 import re
 from typing import List, Dict, Any, Tuple
 
-from openai import OpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_openai import ChatOpenAI
 
 from src.utils.common import setup_logger
 from src.prompts.prompts import QA_VALIDATION_PROMPT
@@ -12,19 +14,21 @@ from src.prompts.prompts import QA_VALIDATION_PROMPT
 
 class QAValidator:
     """QA对校验器，确保问答对指代明确，无需依赖上下文"""
-    
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.qwen_config = config["qwen"]
         self.logger = setup_logger("QAValidator", config)
-        
-        self.client = OpenAI(
+
+        self.llm = ChatOpenAI(
             api_key=self.qwen_config["api_key"],
             base_url=self.qwen_config["base_url"],
-            timeout=self.qwen_config["timeout"],
+            model=self.qwen_config.get("model", "qwen3-max"),
+            temperature=0,
+            max_tokens=100,
+            request_timeout=self.qwen_config.get("timeout", 30),
         )
-        
-        self.validation_model = "qwen3-max"
+        self._validation_prompt = ChatPromptTemplate.from_template(QA_VALIDATION_PROMPT)
         
         # 常见的指代不明确的词汇模式
         self.ambiguous_patterns = [
@@ -115,10 +119,6 @@ class QAValidator:
         
         return len(found_patterns) > 0, found_patterns
     
-    def _build_validation_prompt(self, question: str, answer: str) -> str:
-        """构建校验提示词"""
-        return QA_VALIDATION_PROMPT.format(question=question, answer=answer)
-    
     def validate_qa_pair(self, question: str, answer: str) -> Tuple[bool, str]:
         """
         校验单个问答对
@@ -147,16 +147,8 @@ class QAValidator:
         
         # 3. 只有在模式匹配无法确定且没有明显产品名称时，才使用AI校验
         try:
-            prompt = self._build_validation_prompt(question, answer)
-            
-            response = self.client.chat.completions.create(
-                model=self.validation_model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=100,
-            )
-            
-            result_text = (response.choices[0].message.content or "").strip()
+            chain = self._validation_prompt | self.llm | StrOutputParser()
+            result_text = (chain.invoke({"question": question, "answer": answer}) or "").strip()
             
             if result_text.startswith("PASS"):
                 return True, ""
