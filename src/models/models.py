@@ -1,42 +1,32 @@
 from typing import Dict, List, Any, Optional
 
-import torch
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from langchain_huggingface import HuggingFaceEmbeddings
 from pydantic import BaseModel
 
 
 class CLIPEmbedder:
     def __init__(self, config: Dict[str, Any]):
-        self.config = config['clip']
-        self.device = self.config['device'] if torch.cuda.is_available() else 'cpu'
-        local_files_only = self.config.get('local_files_only', False)
-        self.model = SentenceTransformer(
-            self.config['model_name'], 
-            device=self.device,
-            local_files_only=local_files_only
+        cfg = config['clip']
+        self._embeddings = HuggingFaceEmbeddings(
+            model_name=cfg['model_name'],
+            model_kwargs={
+                "device": cfg.get('device', 'cpu'),
+                "local_files_only": cfg.get('local_files_only', False),
+            },
+            encode_kwargs={"batch_size": cfg.get('batch_size', 128)},
         )
-        self.batch_size = self.config['batch_size']
-    
-    def encode(self, texts: List[str]) -> np.ndarray:
-        """ 样本向量化"""
 
+    def encode(self, texts: List[str]) -> np.ndarray:
         if not texts:
             return np.array([])
-        
-        return self.model.encode(
-            texts, 
-            batch_size=self.batch_size,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-            device=self.device
-        )
-    
+        vecs = self._embeddings.embed_documents(texts)
+        return np.array(vecs, dtype=np.float32)
+
     def get_dimension(self) -> int:
-        """
-        获取模型维度
-        """
-        return self.model.get_sentence_embedding_dimension()
+        if not hasattr(self, "_dim"):
+            self._dim = len(self._embeddings.embed_query("x"))
+        return self._dim
 
 
 
